@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument('--lrD', type=float, default=0.0002)
     parser.add_argument('--beta1', type=float, default=0.5)
     parser.add_argument('--beta2', type=float, default=0.999)
-    parser.add_argument('--gpu_mode', type=bool, default=True)
+    parser.add_argument('--gpu_mode', action='store_true', default=False)
 
     return check_args(parser.parse_args())
 
@@ -70,8 +70,8 @@ def main():
     args = parse_args()
     if args is None:
         exit()
-
-        # declare instance for GAN
+    
+    # declare instance for GAN
     if args.gan_type == 'GAN':
         gan = GAN(args)
     elif args.gan_type == 'CGAN':

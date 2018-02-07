@@ -1,17 +1,25 @@
-import utils, torch, time, os, pickle
+from collections import defaultdict
+import os
+import pickle
+import time
+
 import numpy as np
-import torch.nn as nn
-import torch.optim as optim
+import torch
+from torch import nn
+from torch import optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
+
+import utils
+
 
 class generator(nn.Module):
     # Network Architecture is exactly same as in infoGAN (https://arxiv.org/abs/1606.03657)
     # Architecture : FC1024_BR-FC7x7x128_BR-(64)4dc2s_BR-(1)4dc2s_S
     def __init__(self, dataset = 'mnist'):
         super(generator, self).__init__()
-        if dataset == 'mnist' or dataset == 'fashion-mnist':
+        if dataset in ('mnist', 'fashion-mnist'):
             self.input_height = 28
             self.input_width = 28
             self.input_dim = 62
@@ -46,12 +54,13 @@ class generator(nn.Module):
 
         return x
 
+
 class discriminator(nn.Module):
     # Network Architecture is exactly same as in infoGAN (https://arxiv.org/abs/1606.03657)
     # Architecture : (64)4c2s-(128)4c2s_BL-FC1024_BL-FC1_S
     def __init__(self, dataset = 'mnist'):
         super(discriminator, self).__init__()
-        if dataset == 'mnist' or dataset == 'fashion-mnist':
+        if dataset in ('mnist', 'fashion-mnist'):
             self.input_height = 28
             self.input_width = 28
             self.input_dim = 1
@@ -118,19 +127,19 @@ class GAN(object):
 
         # load dataset
         if self.dataset == 'mnist':
-            self.data_loader = DataLoader(datasets.MNIST('data/mnist', train=True, download=True,
-                                                                          transform=transforms.Compose(
-                                                                              [transforms.ToTensor()])),
-                                                           batch_size=self.batch_size, shuffle=True)
+            self.data_loader = DataLoader(
+                datasets.MNIST('data/mnist', train=True, download=True,
+                               transform=transforms.Compose([transforms.ToTensor()])),
+                batch_size=self.batch_size, shuffle=True)
         elif self.dataset == 'fashion-mnist':
             self.data_loader = DataLoader(
-                datasets.FashionMNIST('data/fashion-mnist', train=True, download=True, transform=transforms.Compose(
-                    [transforms.ToTensor()])),
+                datasets.FashionMNIST('data/fashion-mnist', train=True, download=True,
+                                      transform=transforms.Compose([transforms.ToTensor()])),
                 batch_size=self.batch_size, shuffle=True)
         elif self.dataset == 'celebA':
-            self.data_loader = utils.load_celebA('data/celebA', transform=transforms.Compose(
-                [transforms.CenterCrop(160), transforms.Scale(64), transforms.ToTensor()]), batch_size=self.batch_size,
-                                                 shuffle=True)
+            transform = transforms.Compose([transforms.CenterCrop(160), transforms.Scale(64), transforms.ToTensor()])
+            self.data_loader = utils.load_celebA('data/celebA', transform=transform,
+                                                 batch_size=self.batch_size, shuffle=True)
         self.z_dim = 62
 
         # fixed noise
@@ -140,16 +149,13 @@ class GAN(object):
             self.sample_z_ = Variable(torch.rand((self.batch_size, self.z_dim)), volatile=True)
 
     def train(self):
-        self.train_hist = {}
-        self.train_hist['D_loss'] = []
-        self.train_hist['G_loss'] = []
-        self.train_hist['per_epoch_time'] = []
-        self.train_hist['total_time'] = []
-
+        self.train_hist = defaultdict(list)
         if self.gpu_mode:
-            self.y_real_, self.y_fake_ = Variable(torch.ones(self.batch_size, 1).cuda()), Variable(torch.zeros(self.batch_size, 1).cuda())
+            self.y_real_ = Variable(torch.ones(self.batch_size, 1).cuda())
+            self.y_fake_ = Variable(torch.zeros(self.batch_size, 1).cuda())
         else:
-            self.y_real_, self.y_fake_ = Variable(torch.ones(self.batch_size, 1)), Variable(torch.zeros(self.batch_size, 1))
+            self.y_real_ = Variable(torch.ones(self.batch_size, 1))
+            self.y_fake_ = Variable(torch.zeros(self.batch_size, 1))
 
         self.D.train()
         print('training start!!')
@@ -158,7 +164,7 @@ class GAN(object):
             self.G.train()
             epoch_start_time = time.time()
             for iter, (x_, _) in enumerate(self.data_loader):
-                if iter == self.data_loader.dataset.__len__() // self.batch_size:
+                if iter == len(self.data_loader.dataset) // self.batch_size:
                     break
 
                 z_ = torch.rand((self.batch_size, self.z_dim))
@@ -214,9 +220,8 @@ class GAN(object):
 
     def visualize_results(self, epoch, fix=True):
         self.G.eval()
-
-        if not os.path.exists(self.result_dir + '/' + self.dataset + '/' + self.model_name):
-            os.makedirs(self.result_dir + '/' + self.dataset + '/' + self.model_name)
+        result_path = os.path.join(self.result_dir, self.dataset, self.model_name)
+        os.makedirs(result_path, exist_ok=True)
 
         tot_num_samples = min(self.sample_num, self.batch_size)
         image_frame_dim = int(np.floor(np.sqrt(tot_num_samples)))
@@ -239,7 +244,7 @@ class GAN(object):
             samples = samples.data.numpy().transpose(0, 2, 3, 1)
 
         utils.save_images(samples[:image_frame_dim * image_frame_dim, :, :, :], [image_frame_dim, image_frame_dim],
-                          self.result_dir + '/' + self.dataset + '/' + self.model_name + '/' + self.model_name + '_epoch%03d' % epoch + '.png')
+                          os.path.join(result_path, self.model_name + '_epoch%03d' % epoch + '.png'))
 
     def save(self):
         save_dir = os.path.join(self.save_dir, self.dataset, self.model_name)
